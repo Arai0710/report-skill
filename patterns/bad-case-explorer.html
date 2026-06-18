@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Pattern — Bad case explorer (filterable, expandable, severity-ranked)</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", "Noto Sans SC", sans-serif; padding: 40px; background: #f5f5f5; color: #1c2a2f; }
+    .demo { background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 1200px; margin: 0 auto; }
+    h1 { margin: 0 0 12px; color: #1d6f64; }
+    .lead { color: #555; margin-bottom: 24px; font-size: 14px; line-height: 1.7; }
+    .note { background: #f0f7f5; padding: 16px; border-radius: 8px; margin-top: 24px; font-size: 13px; color: #555; line-height: 1.7; }
+
+    .toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 12px; background: rgba(29,111,100,0.08); border-radius: 8px; margin-bottom: 16px; }
+    .toolbar label { font-size: 12px; color: #46545a; display: inline-flex; align-items: center; gap: 6px; }
+    .toolbar select, .toolbar input[type="range"] { font-family: inherit; font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(28,42,47,0.12); background: #fff; }
+    .toolbar input[type="range"] { padding: 0; width: 140px; }
+    .count { margin-left: auto; font-size: 12px; color: #46545a; font-weight: 600; }
+
+    .list { display: grid; gap: 12px; }
+    .item { border: 1px solid rgba(28,42,47,0.08); border-radius: 14px; overflow: hidden; background: #fff; transition: box-shadow 0.2s; }
+    .item:hover { box-shadow: 0 6px 16px rgba(28,42,47,0.08); }
+    .item.sev-high { border-left: 4px solid #f44336; }
+    .item.sev-med  { border-left: 4px solid #ff9800; }
+    .item.sev-low  { border-left: 4px solid #1976d2; }
+
+    .header { padding: 12px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; flex-wrap: wrap; background: #fafbfc; }
+    .header:hover { background: #f5f7f8; }
+    .rank { font-size: 13px; color: #46545a; font-weight: 700; min-width: 32px; }
+    .meta { display: inline-flex; gap: 8px; font-size: 13px; align-items: center; flex-wrap: wrap; }
+    .sess { font-weight: 700; color: #1d6f64; }
+    .turn-id { color: #1c2a2f; font-weight: 600; }
+    .ttype { font-size: 11px; background: rgba(28,42,47,0.08); color: #46545a; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+    .dims { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+    .dim-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; color: #fff; }
+    .dim-tag.tool   { background: #7C4DFF; }
+    .dim-tag.reason { background: #26A69A; }
+    .dim-tag.intent { background: #FF7043; }
+    .dim-tag.reply  { background: #42A5F5; }
+    .sev { margin-left: auto; font-size: 13px; font-weight: 700; }
+    .sev.sev-high { color: #c62828; }
+    .sev.sev-med  { color: #e65100; }
+    .sev.sev-low  { color: #1565c0; }
+    .toggle { font-size: 14px; color: #46545a; transition: transform 0.2s; }
+    .item.open .toggle { transform: rotate(90deg); }
+    .body { padding: 16px 20px; display: none; border-top: 1px solid rgba(28,42,47,0.08); }
+    .item.open .body { display: block; }
+    .section { margin-bottom: 16px; }
+    .section:last-child { margin-bottom: 0; }
+    .label { font-size: 11px; color: #7c8a90; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; margin-bottom: 8px; }
+    .content { font-size: 13px; line-height: 1.7; background: #f7f9fa; padding: 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto; border: 1px solid rgba(28,42,47,0.08); }
+    .content.code { font-family: "SF Mono", Consolas, monospace; font-size: 12px; background: #1c2a2f; color: #d6e4e8; border: none; }
+    .score-tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-right: 8px; }
+    .s-good { background: rgba(76,175,80,0.12); color: #2e7d32; }
+    .s-warn { background: rgba(255,152,0,0.12); color: #e65100; }
+    .s-bad  { background: rgba(244,67,54,0.12); color: #c62828; }
+    .reasons { display: flex; flex-wrap: wrap; gap: 8px; }
+    .reason-tag { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(244,67,54,0.12); color: #c62828; font-weight: 500; border: 1px solid rgba(244,67,54,0.2); }
+    .reason-dim { font-size: 10px; opacity: 0.7; font-weight: 700; margin-right: 6px; }
+    .empty { padding: 60px 20px; text-align: center; color: #46545a; font-size: 14px; }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <div class="demo">
+    <h1>Pattern: Bad case explorer</h1>
+    <p class="lead">
+      Filterable / expandable / severity-ranked list of low-score rows. Required section for any evaluation or annotation report. This demo uses mock data — replace <code>MOCK_CASES</code> with your real data.
+    </p>
+
+    <div class="toolbar">
+      <label>Session: <select id="fSess">
+        <option value="">全部</option><option>S1</option><option>S2</option><option>S3</option>
+      </select></label>
+      <label>失分维度: <select id="fDim">
+        <option value="">全部</option>
+        <option>工具调用</option><option>推理规划</option><option>意图理解</option><option>回复质量</option>
+      </select></label>
+      <label>严重度 ≥ <span id="sevLabel" style="font-weight:700;min-width:36px;display:inline-block">0.00</span>
+        <input type="range" id="fSev" min="0" max="1" step="0.05" value="0">
+      </label>
+      <span class="count" id="count">0 条</span>
+    </div>
+
+    <div class="list" id="list"></div>
+
+    <div class="note">
+      <strong>What this demonstrates:</strong>
+      <ul>
+        <li>Severity-based color tier (red ≥0.6, orange 0.3–0.6, blue &lt;0.3) on the left border</li>
+        <li>Click row header → expand to show all scores, deduction reasons, content blocks</li>
+        <li>Three filters compose (AND logic); slider for severity threshold</li>
+        <li>Empty state when no rows match filters</li>
+        <li>Code-formatted blocks for JSON content (tool calls, API responses)</li>
+        <li>Counter shows filtered/total</li>
+      </ul>
+      Try filtering: select "工具调用" in 失分维度 dropdown to see only tool-call failures.
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // Mock data — replace with your real data
+    // ============================================================
+    const DIM_MAX = { '工具调用': 1, '推理规划': 2, '意图理解': 2, '回复质量': 2 };
+    const DIM_KEY = { '工具调用':'tool', '推理规划':'reason', '意图理解':'intent', '回复质量':'reply' };
+
+    const MOCK_CASES = [
+      {
+        rank: null, // computed
+        Session: 'S3', 'Turn ID': 'T9', 'Turn 类型': '执行',
+        category: '医药健康', subcategory: '处方药/OTC',
+        scores: { '工具调用': 0, '推理规划': 1, '意图理解': 0 },
+        deductions: [['工具调用','调用了不必要工具'],['推理规划','规划缺失'],['意图理解','意图理解偏差']],
+        content: {
+          'Agent 思考': '用户想买止疼药，但她说自己怀孕了。我需要先查询药品禁忌，但我直接调用了 medicine_search...',
+          '工具调用': '{"tool_name":"medicine_search","args":{"keyword":"止疼药","sort":"price_asc"}}',
+          'Tool 返回': '[{"name":"布洛芬","price":18,"contraindication":"孕妇禁用"},{"name":"对乙酰氨基酚","price":12,"contraindication":"妊娠期慎用"}]',
+        },
+      },
+      {
+        Session: 'S2', 'Turn ID': 'T4', 'Turn 类型': '执行',
+        category: '甜品饮品', subcategory: '奶茶果汁',
+        scores: { '工具调用': 1, '推理规划': 1, '意图理解': 1 },
+        deductions: [['推理规划','推理跳步'],['意图理解','约束条件遗漏']],
+        content: {
+          'Agent 思考': '用户要奶茶，没有指定温度。我应该先问温度偏好，但我直接下单了。',
+          '工具调用': '{"tool_name":"order_create","args":{"items":[{"id":"MILKTEA001","temp":"normal"}]}}',
+        },
+      },
+      {
+        Session: 'S3', 'Turn ID': 'T5', 'Turn 类型': '回复',
+        category: '医药健康', subcategory: '处方药/OTC',
+        scores: { '回复质量': 0 },
+        deductions: [['回复质量','信息缺失']],
+        content: {
+          '用户界面回复': '好的，已经为您下单了。',
+        },
+      },
+      {
+        Session: 'S1', 'Turn ID': 'T3', 'Turn 类型': '执行',
+        category: '美食', subcategory: '中式快餐',
+        scores: { '工具调用': 1, '推理规划': 0, '意图理解': 1 },
+        deductions: [['推理规划','信息整合不充分'],['意图理解','用户偏好未抓取']],
+        content: {
+          'Agent 思考': '用户说"不吃香菜"，但我在搜索餐厅时没把这条偏好带进搜索条件...',
+          '工具调用': '{"tool_name":"restaurant_search","args":{"keyword":"黄焖鸡米饭"}}',
+        },
+      },
+      {
+        Session: 'S2', 'Turn ID': 'T7', 'Turn 类型': '执行',
+        category: '甜品饮品', subcategory: '奶茶果汁',
+        scores: { '工具调用': 1, '推理规划': 2, '意图理解': 1 },
+        deductions: [['意图理解','约束条件遗漏']],
+        content: {
+          'Agent 思考': '用户要满 30 减 10 的券，我搜了券但没核对券的最低消费金额。',
+        },
+      },
+    ];
+
+    // Compute severity for each row
+    function computeSeverity(scores) {
+      let lost = 0, n = 0;
+      for (const [dim, max] of Object.entries(DIM_MAX)) {
+        if (scores[dim] !== undefined) {
+          lost += (max - scores[dim]) / max;
+          n++;
+        }
+      }
+      return n > 0 ? lost / n : 0;
+    }
+
+    MOCK_CASES.forEach(c => {
+      c.severity = computeSeverity(c.scores);
+      c.failed_dims = Object.keys(c.scores).filter(d => c.scores[d] < DIM_MAX[d]);
+    });
+    MOCK_CASES.sort((a, b) => b.severity - a.severity);
+
+    // ============================================================
+    // Render
+    // ============================================================
+    function tier(sev) { return sev >= 0.6 ? 'high' : sev >= 0.3 ? 'med' : 'low'; }
+    function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+    function scoreTagClass(v, max) { return v === max ? 's-good' : v === 0 ? 's-bad' : 's-warn'; }
+
+    function render() {
+      const sess = document.getElementById('fSess').value;
+      const dim = document.getElementById('fDim').value;
+      const sev = parseFloat(document.getElementById('fSev').value);
+      document.getElementById('sevLabel').textContent = sev.toFixed(2);
+
+      const filtered = MOCK_CASES.filter(c => {
+        if (sess && c.Session !== sess) return false;
+        if (dim && !c.failed_dims.includes(dim)) return false;
+        if (c.severity < sev) return false;
+        return true;
+      });
+
+      document.getElementById('count').textContent = `${filtered.length} / ${MOCK_CASES.length} 条`;
+
+      const list = document.getElementById('list');
+      if (filtered.length === 0) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div>当前筛选下无 bad case</div>`;
+        return;
+      }
+
+      list.innerHTML = filtered.map((c, i) => {
+        const t = tier(c.severity);
+        const dimTags = c.failed_dims.map(d => `<span class="dim-tag ${DIM_KEY[d]}">${d}</span>`).join('');
+        const scoreTags = Object.entries(c.scores).map(([d,v]) =>
+          `<span class="score-tag ${scoreTagClass(v, DIM_MAX[d])}">${d}: ${v}/${DIM_MAX[d]}</span>`
+        ).join('');
+        const reasonTags = c.deductions.map(([d, r]) =>
+          `<span class="reason-tag"><span class="reason-dim">[${d}]</span>${esc(r)}</span>`
+        ).join('');
+        const contentBlocks = Object.entries(c.content).map(([label, text]) => {
+          const isCode = label.includes('工具') || label.includes('Tool');
+          return `<div class="section"><div class="label">${label}</div><div class="content ${isCode?'code':''}">${esc(text)}</div></div>`;
+        }).join('');
+
+        return `
+          <div class="item sev-${t}">
+            <div class="header" onclick="this.parentElement.classList.toggle('open')">
+              <span class="rank">#${i+1}</span>
+              <span class="meta">
+                <span class="sess">${c.Session}</span>
+                <span class="turn-id">${c['Turn ID']}</span>
+                <span class="ttype">${c['Turn 类型']}</span>
+                <span style="color:#46545a;font-size:12px">${c.category} / ${c.subcategory}</span>
+              </span>
+              <span class="dims">${dimTags}</span>
+              <span class="sev sev-${t}">严重度 ${c.severity.toFixed(2)}</span>
+              <span class="toggle">▶</span>
+            </div>
+            <div class="body">
+              <div class="section">
+                <div class="label">各维度得分</div>
+                <div>${scoreTags}</div>
+              </div>
+              <div class="section">
+                <div class="label">扣分原因</div>
+                <div class="reasons">${reasonTags}</div>
+              </div>
+              ${contentBlocks}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    ['fSess','fDim'].forEach(id => document.getElementById(id).addEventListener('change', render));
+    document.getElementById('fSev').addEventListener('input', render);
+    render();
+  </script>
+</body>
+</html>

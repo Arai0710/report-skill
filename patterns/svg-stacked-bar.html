@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pattern — Hand-written SVG stacked bar chart</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; padding: 40px; background: #f5f5f5; }
+    .demo { background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 1400px; margin: 0 auto; }
+    h1 { margin: 0 0 20px; color: #1d6f64; }
+    .note { background: #f0f7f5; padding: 16px; border-radius: 8px; margin-top: 20px; font-size: 13px; color: #555; line-height: 1.6; }
+    code { background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="demo">
+    <h1>Pattern: Side-by-side stacked bars with smart label placement</h1>
+    <p>One row = one category. Each row has two bars (A baseline / B current). Each bar stacks 3 segments. Small segments use leader lines to outside labels.</p>
+    <div id="chart"></div>
+
+    <div class="note">
+      <strong>What this demonstrates:</strong>
+      <ul>
+        <li>Margin convention (translate group into plot area)</li>
+        <li>Two stacked bars per x-tick (hard for Chart.js)</li>
+        <li>Semi-transparent fill + solid stroke for segment definition</li>
+        <li>Inside label when segment ≥ 35px, leader line outside otherwise</li>
+        <li>Greedy collision avoidance for stacked leader labels</li>
+      </ul>
+      Open this file directly in a browser. View source for the full code.
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // Sample data — replace with your own
+    // ============================================================
+    const CATEGORIES = ['Chat', 'Search', 'Writing', 'Knowledge', 'Code', 'Vision', 'Task', 'Tool'];
+    const DATA_A = CATEGORIES.map(name => ({
+      name,
+      good:   60 + Math.random() * 25,
+      minor:  Math.random() * 15,
+      severe: Math.random() * 8,
+    }));
+    const DATA_B = CATEGORIES.map(name => ({
+      name,
+      good:   55 + Math.random() * 30,
+      minor:  Math.random() * 18,
+      severe: Math.random() * 12,
+    }));
+    // Normalize so each bar sums to 100
+    [DATA_A, DATA_B].forEach(set => set.forEach(d => {
+      const sum = d.good + d.minor + d.severe;
+      d.good = d.good/sum*100; d.minor = d.minor/sum*100; d.severe = d.severe/sum*100;
+    }));
+
+    const COLORS = {
+      severe: '#E8A090',   // bottom of stack (red)
+      minor:  '#FFB873',   // middle (orange)
+      good:   '#85C99A',   // top (green)
+    };
+
+    // ============================================================
+    // Render
+    // ============================================================
+    function render() {
+      const width = 1300, height = 500;
+      const margin = { top: 50, right: 120, bottom: 60, left: 70 };
+      const chartW = width - margin.left - margin.right;
+      const chartH = height - margin.top - margin.bottom;
+
+      const xStep = chartW / CATEGORIES.length;
+      const barW = Math.min(45, xStep * 0.35);
+      const barGap = 6;
+
+      let svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="font-family:inherit;background:#fff;width:100%;height:auto">`;
+
+      // Legend (outer coord)
+      const legendItems = [
+        { label: 'Good (3+4)',   color: COLORS.good },
+        { label: 'Minor (2)',    color: COLORS.minor },
+        { label: 'Severe (0+1)', color: COLORS.severe },
+      ];
+      legendItems.forEach((item, i) => {
+        const x = width - margin.right + 10, y = 80 + i * 22;
+        svg += `<rect x="${x}" y="${y}" width="14" height="14" fill="${item.color}" rx="2"/>`;
+        svg += `<text x="${x + 20}" y="${y + 11}" font-size="11" fill="#555">${item.label}</text>`;
+      });
+      svg += `<text x="${width - margin.right + 10}" y="${80 + 3*22 + 14}" font-size="10" fill="#888">Left bar = A, Right bar = B</text>`;
+
+      // Translate into plot area
+      svg += `<g transform="translate(${margin.left},${margin.top})">`;
+
+      // Gridlines
+      for (let i = 0; i <= 5; i++) {
+        const y = chartH - (i/5) * chartH;
+        svg += `<line x1="0" y1="${y}" x2="${chartW}" y2="${y}" stroke="#e8e8e8" stroke-dasharray="3,3"/>`;
+        svg += `<text x="-8" y="${y+4}" font-size="11" fill="#999" text-anchor="end">${i*20}%</text>`;
+      }
+      svg += `<line x1="0" y1="0" x2="0" y2="${chartH}" stroke="#ccc"/>`;
+      svg += `<line x1="0" y1="${chartH}" x2="${chartW}" y2="${chartH}" stroke="#ccc"/>`;
+
+      // Collect outside labels for collision resolution
+      const leaderLabels = [];
+
+      // Draw bars
+      CATEGORIES.forEach((name, i) => {
+        const centerX = i * xStep + xStep / 2;
+        svg += `<text x="${centerX}" y="${chartH + 22}" font-size="12" fill="#333" text-anchor="middle" font-weight="500">${name}</text>`;
+
+        const xA = centerX - barW - barGap / 2;
+        const xB = centerX + barGap / 2;
+
+        ['A', 'B'].forEach(side => {
+          const x = side === 'A' ? xA : xB;
+          const data = side === 'A' ? DATA_A[i] : DATA_B[i];
+          let cursorY = chartH;
+          ['severe', 'minor', 'good'].forEach(key => {
+            const val = data[key];
+            const h = (val / 100) * chartH;
+            cursorY -= h;
+            svg += `<rect x="${x}" y="${cursorY}" width="${barW}" height="${h}" fill="${COLORS[key]}" fill-opacity="0.55" stroke="${COLORS[key]}" stroke-width="1" rx="2"/>`;
+            // Inside label if ≥35px, else leader line
+            if (h >= 35) {
+              svg += `<text x="${x + barW/2}" y="${cursorY + h/2 + 4}" font-size="10" fill="#333" text-anchor="middle">${val.toFixed(1)}%</text>`;
+            } else if (val > 0.5) {
+              leaderLabels.push({
+                side: side === 'A' ? 'left' : 'right',
+                col: i,
+                anchorX: side === 'A' ? x : x + barW,
+                anchorY: cursorY + h / 2,
+                value: val,
+                color: COLORS[key],
+              });
+            }
+          });
+        });
+      });
+
+      // Resolve leader-label collisions (greedy, within col+side)
+      const byColAndSide = {};
+      leaderLabels.forEach(l => {
+        const key = `${l.col}_${l.side}`;
+        (byColAndSide[key] ||= []).push(l);
+      });
+      Object.values(byColAndSide).forEach(group => {
+        group.sort((a,b) => a.anchorY - b.anchorY);
+        for (let i = 1; i < group.length; i++) {
+          const prev = group[i-1];
+          const prevY = prev.adjustedY ?? prev.anchorY;
+          if (group[i].anchorY - prevY < 14) {
+            group[i].adjustedY = prevY + 14;
+          }
+        }
+      });
+
+      // Draw leader lines + labels
+      leaderLabels.forEach(l => {
+        const finalY = l.adjustedY ?? l.anchorY;
+        const labelX = l.side === 'left' ? l.anchorX - 25 : l.anchorX + 25;
+        const textX  = l.side === 'left' ? labelX - 3 : labelX + 3;
+        svg += `<line x1="${l.anchorX}" y1="${l.anchorY}" x2="${labelX}" y2="${finalY}" stroke="${l.color}" stroke-width="1" stroke-opacity="0.7"/>`;
+        svg += `<text x="${textX}" y="${finalY + 3}" font-size="9" fill="${l.color}" text-anchor="${l.side === 'left' ? 'end' : 'start'}" font-weight="600">${l.value.toFixed(1)}%</text>`;
+      });
+
+      svg += `</g></svg>`;
+      document.getElementById('chart').innerHTML = svg;
+    }
+
+    render();
+  </script>
+</body>
+</html>

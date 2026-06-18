@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{REPORT_TITLE}}</title>
+
+  <!-- CDN dependencies. Removed before export. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    /* ============================================================
+       Paste the contents of design-tokens.css here, OR keep this
+       inline copy in sync. (Inline is simpler for true single-file
+       distribution.)
+       ============================================================ */
+
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+
+    :root {
+      --bg-cream:#f5efe6; --bg-mist:#e9f2f1;
+      --ink-strong:#1c2a2f; --ink-body:#2c3a3f; --ink-muted:#46545a; --ink-faint:#7c8a90;
+      --primary:#1d6f64; --primary-soft:#b8e0d8; --primary-faint:rgba(29,111,100,0.08);
+      --accent:#ff6b35; --accent-soft:#ffe1d3;
+      --card:#ffffff; --card-border:rgba(28,42,47,0.08);
+      --card-shadow:0 12px 30px rgba(28,42,47,0.08);
+      --card-shadow-hover:0 18px 50px rgba(29,111,100,0.12);
+      --good:#4caf50; --good-text:#2e7d32; --good-soft:rgba(76,175,80,0.12);
+      --bad:#f44336;  --bad-text:#c62828;  --bad-soft:rgba(244,67,54,0.12);
+      --warn:#ff9800; --warn-text:#e65100; --warn-soft:rgba(255,152,0,0.12);
+      --info:#1976d2; --info-text:#1565c0; --info-soft:rgba(25,118,210,0.12);
+      --series-a:#E53935; --series-a-fill:#E8A090;
+      --series-b:#1976D2; --series-b-fill:#A5B4D4;
+      --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
+      --space-5:20px; --space-6:24px; --space-8:32px; --space-10:40px;
+      --radius-sm:8px; --radius-md:14px; --radius-lg:20px; --radius-pill:999px;
+      --font-sans:"Noto Sans SC",-apple-system,"Segoe UI","PingFang SC",sans-serif;
+      --ease-out:cubic-bezier(0.16,1,0.3,1);
+      --duration-fast:150ms; --duration:200ms;
+    }
+
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{min-height:100vh;font-family:var(--font-sans);color:var(--ink-strong);
+      background:radial-gradient(circle at top left,rgba(255,235,205,0.6),transparent 45%),
+                 radial-gradient(circle at 80% 20%,rgba(133,201,192,0.35),transparent 55%),
+                 linear-gradient(135deg,var(--bg-cream),var(--bg-mist));
+      padding:var(--space-8) var(--space-5);line-height:1.6}
+
+    .app{max-width:1600px;margin:0 auto;display:grid;gap:var(--space-6)}
+
+    .hero{padding:var(--space-8);border-radius:var(--radius-lg);
+      background:linear-gradient(120deg,rgba(29,111,100,0.12),rgba(255,107,53,0.10));
+      border:1px solid rgba(29,111,100,0.18);box-shadow:var(--card-shadow)}
+    .hero h1{font-size:clamp(24px,3vw,36px);letter-spacing:-0.02em;margin-bottom:var(--space-3)}
+    .hero p{font-size:15px;color:var(--ink-muted);line-height:1.6}
+    .hero .meta{display:flex;flex-wrap:wrap;gap:var(--space-3);margin-top:var(--space-4);font-size:13px;color:var(--ink-muted)}
+    .hero .meta span{background:var(--primary-faint);padding:4px 12px;border-radius:var(--radius-pill)}
+
+    .panel,.card{background:var(--card);border-radius:var(--radius-lg);padding:var(--space-6);
+      border:1px solid var(--card-border);box-shadow:var(--card-shadow)}
+    .panel-title{font-size:18px;font-weight:600;margin-bottom:var(--space-4)}
+
+    .btn{border:none;padding:var(--space-3) var(--space-5);border-radius:var(--radius-sm);
+      font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;
+      transition:transform var(--duration) var(--ease-out),box-shadow var(--duration) var(--ease-out),background var(--duration) var(--ease-out)}
+    .btn-primary{background:var(--primary);color:#fff;box-shadow:0 10px 20px rgba(29,111,100,0.24)}
+    .btn-primary:hover{transform:translateY(-1px)}
+    .btn-ghost{background:rgba(28,42,47,0.06);color:var(--ink-strong)}
+    .btn-ghost:hover{background:rgba(28,42,47,0.12);transform:translateY(-1px)}
+    .btn:active{transform:translateY(0)}
+
+    .upload-area{display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center}
+    .file-input{flex:1;min-width:240px;padding:10px 12px;border:2px dashed rgba(29,111,100,0.35);
+      border-radius:var(--radius-sm);background:#f8fbfa;font-size:13px;font-family:inherit}
+
+    .stats-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--space-4)}
+    .stat-card{background:var(--card);border-radius:var(--radius-md);padding:var(--space-5);
+      border:1px solid var(--card-border);box-shadow:0 8px 20px rgba(28,42,47,0.06);position:relative;overflow:hidden}
+    .stat-card::after{content:"";position:absolute;width:100px;height:100px;border-radius:50%;
+      right:-40px;top:-50px;background:var(--primary-faint)}
+    .stat-label{font-size:13px;color:var(--ink-muted);margin-bottom:var(--space-2);position:relative;z-index:1}
+    .stat-value{font-size:28px;font-weight:700;color:var(--primary);position:relative;z-index:1}
+    .stat-sub{font-size:12px;color:var(--ink-muted);margin-top:6px;position:relative;z-index:1}
+
+    .diff-indicator{display:inline-block;margin-left:var(--space-2);padding:2px 8px;
+      border-radius:var(--radius-pill);font-size:12px;font-weight:600}
+    .diff-indicator.positive{background:var(--good-soft);color:var(--good-text)}
+    .diff-indicator.negative{background:var(--bad-soft);color:var(--bad-text)}
+    .diff-indicator.neutral{background:rgba(28,42,47,0.08);color:var(--ink-muted)}
+
+    .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:var(--space-5)}
+    .chart-card{background:var(--card);border-radius:var(--radius-md);padding:var(--space-6);
+      border:1px solid var(--card-border);box-shadow:0 8px 20px rgba(28,42,47,0.06);overflow:visible}
+    .chart-title{font-size:16px;font-weight:600;margin-bottom:var(--space-4);color:var(--ink-strong);
+      display:flex;justify-content:space-between;align-items:center;gap:var(--space-3)}
+    .chart-container{position:relative;min-height:300px}
+    .chart-actions{display:flex;gap:var(--space-2)}
+    .chart-actions .btn{padding:4px 10px;font-size:11px}
+
+    .table-card{background:var(--card);border-radius:var(--radius-md);padding:var(--space-6);
+      border:1px solid var(--card-border);box-shadow:0 8px 20px rgba(28,42,47,0.06);overflow-x:auto}
+    .data-table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}
+    .data-table thead{background:var(--primary-faint)}
+    .data-table th,.data-table td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--card-border)}
+    .data-table th{font-weight:600;color:var(--ink-strong)}
+    .data-table tbody tr:hover{background:rgba(29,111,100,0.04)}
+
+    .hl-good{color:var(--good-text);font-weight:700}
+    .hl-bad{color:var(--bad-text);font-weight:700}
+    .hl-warn{color:var(--warn-text);font-weight:700}
+    .hl-info{color:var(--info-text);font-weight:700}
+    .hl-keyword{color:var(--primary);font-weight:700}
+    .hl-neutral{color:var(--ink-strong);font-weight:600}
+
+    .conclusion-card{background:linear-gradient(135deg,rgba(29,111,100,0.04),rgba(255,107,53,0.03));
+      border:1px solid rgba(29,111,100,0.15);border-radius:var(--radius-lg);
+      padding:var(--space-6) var(--space-8)}
+    .conclusion-title{font-size:18px;font-weight:700;color:var(--primary);margin-bottom:var(--space-4);
+      display:flex;align-items:center;gap:var(--space-2)}
+    .conclusion-text{font-size:14px;line-height:1.8;color:var(--ink-strong)}
+    .conclusion-bullets{margin:var(--space-3) 0;padding-left:var(--space-3)}
+    .conclusion-bullet{font-size:14px;line-height:1.8;margin-bottom:var(--space-2);
+      text-indent:-1.2em;padding-left:1.2em}
+    .conclusion-bullet::before{content:"● ";color:var(--ink-muted);font-size:10px}
+
+    .frozen-input{font-weight:600;color:var(--primary);padding:2px 8px;
+      background:var(--primary-faint);border-radius:4px}
+
+    .hidden{display:none}
+    *:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+    @media (max-width:1200px){.stats-overview{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}}
+    @media (max-width:992px){.chart-grid{grid-template-columns:1fr}}
+    @media (max-width:768px){body{padding:var(--space-4) var(--space-3)}.hero{padding:var(--space-5)}.panel,.card{padding:var(--space-4)}}
+    @media print{
+      body{background:white !important;padding:0}
+      .btn,button,.upload-area,input[type="file"]{display:none !important}
+      .card,.panel,.chart-card{page-break-inside:avoid;box-shadow:none !important;border:1px solid #ccc}
+    }
+
+    /* Export progress overlay */
+    #exportProgress{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.5);
+      display:none;align-items:center;justify-content:center}
+    #exportProgress.active{display:flex}
+    .export-progress-card{background:#fff;padding:30px 50px;border-radius:16px;
+      text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+    .export-progress-spinner{width:32px;height:32px;margin:0 auto 16px;
+      border:3px solid rgba(29,111,100,0.2);border-top-color:var(--primary);
+      border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- ====================== HERO ====================== -->
+    <header class="hero">
+      <h1>{{REPORT_TITLE}}</h1>
+      <p>{{REPORT_SUBTITLE}}</p>
+      <div class="meta" id="reportMeta">
+        <!-- populated after data load: date, source, row count, etc -->
+      </div>
+    </header>
+
+    <!-- ====================== UPLOAD ====================== -->
+    <!-- Remove this section if data is hardcoded inline instead -->
+    <section class="panel">
+      <div class="panel-title">📤 数据导入</div>
+      <div class="upload-area">
+        <input type="file" id="fileInput" class="file-input" accept=".csv,.tsv,.json,.jsonl,.ndjson" multiple>
+        <button class="btn btn-primary" id="loadBtn">加载数据</button>
+        <button class="btn btn-ghost" id="exportHtmlBtn">导出 HTML 报告</button>
+        <button class="btn btn-ghost" id="exportExcelBtn">导出 Excel</button>
+        <button class="btn btn-ghost" id="clearBtn">清空</button>
+      </div>
+      <div id="fileInfo" style="margin-top:12px;font-size:13px;color:var(--ink-muted)"></div>
+    </section>
+
+    <!-- ====================== CONCLUSION (top, executive-first) ====================== -->
+    <section id="conclusionSection" class="conclusion-card hidden">
+      <div class="conclusion-title">📊 核心结论</div>
+      <div class="conclusion-text" id="conclusionText"></div>
+      <div class="conclusion-bullets" id="conclusionBullets"></div>
+    </section>
+
+    <!-- ====================== STATS ====================== -->
+    <section id="statsSection" class="hidden">
+      <div class="stats-overview" id="statsOverview"></div>
+    </section>
+
+    <!-- ====================== HERO CHART ====================== -->
+    <section id="heroChartSection" class="hidden">
+      <div class="chart-card">
+        <div class="chart-title">
+          <span>{{HERO_CHART_TITLE}}</span>
+          <div class="chart-actions">
+            <button class="btn btn-ghost" onclick="downloadChartPng('heroChartContainer','hero-chart.png')">PNG</button>
+            <button class="btn btn-ghost" onclick="downloadChartSvg('heroChartContainer','hero-chart.svg')">SVG</button>
+          </div>
+        </div>
+        <div class="chart-container" id="heroChartContainer"></div>
+      </div>
+    </section>
+
+    <!-- ====================== BREAKDOWN CHARTS ====================== -->
+    <section id="chartsSection" class="hidden">
+      <div class="chart-grid" id="chartsGrid"></div>
+    </section>
+
+    <!-- ====================== TABLES ====================== -->
+    <section id="tablesSection" class="hidden">
+      <div class="table-card">
+        <div class="chart-title"><span>📋 明细数据</span></div>
+        <div id="tablesContainer"></div>
+      </div>
+    </section>
+
+    <!-- ====================== BAD CASE EXPLORER ======================
+         Required for evaluation / annotation / QA / review datasets.
+         See references/bad-case-pattern.md for the full implementation guide.
+         Enable by removing 'hidden' class AND wiring renderBadCases() in JS.
+         Each card shows: rank, identity (session/turn/category), failed dimensions,
+         severity tier (color-coded border). Click to expand: all sub-scores,
+         deduction reasons, full content (input / model output / tool calls).
+    ============================================================ -->
+    <section id="badCaseSection" class="panel hidden">
+      <div class="chart-title">
+        <span>🔍 Bad Case 详情（低分用例 / 争议案例）</span>
+        <span style="font-size:12px;color:var(--ink-muted);font-weight:400">按严重度排序 · 点击展开看完整上下文</span>
+      </div>
+      <div class="badcase-toolbar">
+        <!-- Add per-category / per-dimension filter controls here. See bad-case-pattern.md. -->
+        <span class="badcase-count" id="badCaseCount">0 / 0 条</span>
+      </div>
+      <div class="badcase-list" id="badCaseList"><!-- renderBadCases() populates --></div>
+    </section>
+
+  </div>
+
+  <!-- Export progress overlay -->
+  <div id="exportProgress">
+    <div class="export-progress-card">
+      <div class="export-progress-spinner"></div>
+      <div class="export-progress-text" id="exportProgressText">准备中…</div>
+    </div>
+  </div>
+
+  <script>
+    /* ============================================================
+       Configuration — CUSTOMIZE THIS BLOCK per report
+       ============================================================ */
+
+    // Optionally pin logical roles to exact source fields. Leave null to let the
+    // profiler choose a defensible candidate from values and field names.
+    const FIELDS = {
+      dimension:   null,
+      metric:      null,
+      timestamp:   null,
+      comparison:  null,
+      identity:    null,
+      label:       null,
+    };
+
+    // Domain-agnostic threshold tiers. Tune to your data's noise floor.
+    const THRESHOLDS = {
+      trend: { flat: 1, moderate: 5, significant: 15 },  // % point deltas
+      severity: { good: 80, acceptable: 60 },             // absolute % values
+    };
+
+    // Optional: dictionary of phrases keyed by dimension value.
+    // Leave empty if you want generic auto-generated text.
+    const DICTIONARY = {
+      // 'Region A': '北区市场，主打高端客群',
+      // 'Region B': '南区市场，价格敏感型为主',
+    };
+
+    /* ============================================================
+       State (single source of truth)
+       ============================================================ */
+
+    const state = {
+      rawData: [],
+      schema: null,
+      roles: null,
+      reportPlan: null,
+      processedData: null,
+      uploadedFiles: [],
+      charts: [],
+    };
+
+    /* ============================================================
+       Bootstrap
+       ============================================================ */
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('loadBtn').addEventListener('click', loadFiles);
+      document.getElementById('clearBtn').addEventListener('click', clearAll);
+      document.getElementById('exportHtmlBtn').addEventListener('click', exportHtmlReport);
+      document.getElementById('exportExcelBtn').addEventListener('click', exportExcel);
+
+      // Auto-load if data is embedded inline at the bottom of this file
+      if (typeof EMBEDDED_DATA !== 'undefined' && EMBEDDED_DATA.length > 0) {
+        state.rawData = EMBEDDED_DATA;
+        runPipeline();
+      }
+    });
+
+    /* ============================================================
+       Stage 1 — parse
+       ============================================================ */
+
+    async function loadFiles() {
+      const files = document.getElementById('fileInput').files;
+      if (!files.length) { alert('请先选择文件'); return; }
+
+      state.uploadedFiles = Array.from(files);
+      state.rawData = [];
+
+      for (const file of files) {
+        const rows = await parseFile(file);
+        state.rawData = state.rawData.concat(rows);
+      }
+
+      runPipeline();
+    }
+
+    function parseFile(file) {
+      return new Promise((resolve, reject) => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'json') {
+          file.text().then(t => {
+            const parsed = JSON.parse(t);
+            resolve(normalizeJsonPayload(parsed));
+          }).catch(reject);
+        } else if (ext === 'jsonl' || ext === 'ndjson') {
+          file.text().then(t => resolve(t.split(/\r?\n/).filter(Boolean).map((line, i) => {
+            try { return JSON.parse(line); }
+            catch (err) { throw new Error(`JSONL 第 ${i + 1} 行解析失败：${err.message}`); }
+          }).map(flattenRecord))).catch(reject);
+        } else {
+          // csv / tsv
+          Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: h => h.trim().replace(/^﻿/, ''),
+            complete: r => resolve(r.data),
+            error: reject,
+          });
+        }
+      });
+    }
+
+    function normalizeJsonPayload(value) {
+      if (Array.isArray(value)) return value.map(flattenRecord);
+      for (const key of ['data', 'rows', 'items', 'results']) {
+        if (Array.isArray(value?.[key])) return value[key].map(flattenRecord);
+      }
+      if (value && typeof value === 'object') return [flattenRecord(value)];
+      throw new Error('JSON 顶层必须是记录对象、记录数组或常见数据包装对象');
+    }
+
+    function flattenRecord(record, prefix = '', output = {}) {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) return { value: record };
+      Object.entries(record).forEach(([key, value]) => {
+        const field = prefix ? `${prefix}.${key}` : key;
+        if (value && typeof value === 'object' && !Array.isArray(value)) flattenRecord(value, field, output);
+        else output[field] = Array.isArray(value) ? JSON.stringify(value) : value;
+      });
+      return output;
+    }
+
+    /* ============================================================
+       Stage 2 — detect schema
+       ============================================================ */
+
+    function detectSchema(rows) {
+      if (!rows.length) return null;
+      const fields = [...new Set(rows.flatMap(row => Object.keys(row || {})))];
+      const types = {};
+      fields.forEach(f => {
+        const samples = rows.slice(0, 200).map(r => r[f]).filter(v => v !== null && v !== undefined && v !== '');
+        types[f] = inferType(samples);
+      });
+      return {
+        rowCount: rows.length,
+        fields,
+        types,
+        dimensions: fields.filter(f => ['category', 'boolean'].includes(types[f])),
+        metrics: fields.filter(f => types[f] === 'number'),
+        timeFields: fields.filter(f => types[f] === 'date'),
+        identityFields: fields.filter(f => types[f] === 'identifier'),
+      };
+    }
+
+    function inferType(samples) {
+      if (!samples.length) return 'text';
+      const numberRate = samples.filter(v => isFiniteNumber(v)).length / samples.length;
+      if (numberRate >= 0.9) return 'number';
+      const dateRate = samples.filter(v => isUnambiguousDate(v)).length / samples.length;
+      if (dateRate >= 0.9) return 'date';
+      const booleanRate = samples.filter(v => /^(true|false|yes|no|y|n|是|否)$/i.test(String(v).trim())).length / samples.length;
+      if (booleanRate >= 0.9) return 'boolean';
+      const unique = new Set(samples).size;
+      if (unique === samples.length && samples.length > 5) return 'identifier';
+      if (unique <= Math.min(50, Math.max(2, samples.length * 0.2))) return 'category';
+      return 'text';
+    }
+
+    function isFiniteNumber(value) {
+      if (typeof value === 'number') return Number.isFinite(value);
+      const normalized = String(value).trim().replace(/[$¥€£,%\s]/g, '').replace(/,/g, '');
+      return /^[-+]?\d*\.?\d+(e[-+]?\d+)?$/i.test(normalized) && Number.isFinite(Number(normalized));
+    }
+
+    function toNumber(value) {
+      if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+      const normalized = String(value ?? '').trim().replace(/[$¥€£,%\s]/g, '').replace(/,/g, '');
+      return isFiniteNumber(value) ? Number(normalized) : null;
+    }
+
+    function isUnambiguousDate(value) {
+      const text = String(value).trim();
+      return (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T].*)?$/.test(text) || /^\d{4}-\d{2}$/.test(text))
+        && !Number.isNaN(Date.parse(text));
+    }
+
+    function resolveFieldRoles(schema) {
+      const exact = role => FIELDS[role] && schema.fields.includes(FIELDS[role]) ? FIELDS[role] : null;
+      const named = pattern => schema.fields.find(field => pattern.test(field));
+      return {
+        dimension: exact('dimension') || schema.dimensions[0] || null,
+        metric: exact('metric') || schema.metrics[0] || null,
+        timestamp: exact('timestamp') || schema.timeFields[0] || null,
+        comparison: exact('comparison') || named(/version|variant|group|cohort|period|版本|组别|时期|批次/i) || null,
+        identity: exact('identity') || named(/(^|[_.-])(id|key|uuid|编号|编码)($|[_.-])/i) || schema.identityFields[0] || null,
+        label: exact('label') || named(/name|title|label|名称|标题/i) || null,
+      };
+    }
+
+    function buildReportPlan(schema, roles) {
+      const archetype = roles.comparison ? 'comparison'
+        : roles.timestamp ? 'trend'
+        : roles.dimension ? 'snapshot'
+        : 'table';
+      return {
+        archetype,
+        primaryMetric: roles.metric || '__row_count__',
+        aggregation: roles.metric ? 'sum and mean' : 'count',
+        dimension: roles.dimension || '__all_rows__',
+        warnings: [
+          !roles.metric ? '未识别到可靠数值指标，将使用记录数。' : null,
+          !roles.dimension ? '未识别到可靠分组维度，将只展示总体。' : null,
+        ].filter(Boolean),
+      };
+    }
+
+    /* ============================================================
+       Stage 3 — process / aggregate
+       ============================================================ */
+
+    function processData() {
+      const rows = state.rawData;
+      const total = rows.length;
+      const roles = state.roles;
+
+      // Group by dimension
+      const byDimension = {};
+      rows.forEach(r => {
+        const rawKey = roles.dimension ? r[roles.dimension] : '全部记录';
+        const key = rawKey === null || rawKey === undefined || rawKey === '' ? '(缺失)' : String(rawKey);
+        const parsed = roles.metric ? toNumber(r[roles.metric]) : 1;
+        const value = parsed ?? 0;
+        if (!byDimension[key]) byDimension[key] = { count: 0, sum: 0, items: [] };
+        byDimension[key].count++;
+        if (parsed !== null) byDimension[key].sum += value;
+        byDimension[key].items.push(r);
+      });
+
+      // Compute derived stats per group
+      Object.values(byDimension).forEach(g => {
+        g.mean = g.count ? g.sum / g.count : 0;
+        g.share = total ? g.count / total : 0;
+      });
+
+      // Overall metrics
+      const allValues = roles.metric ? rows.map(r => toNumber(r[roles.metric])).filter(v => v !== null) : rows.map(() => 1);
+      const overallSum = allValues.reduce((a,b) => a + b, 0);
+      const overallMean = allValues.length ? overallSum / allValues.length : 0;
+
+      // Top contributors / detractors (relative to overall mean)
+      const groupsSorted = Object.entries(byDimension)
+        .map(([name, g]) => ({ name, ...g, deviation: g.mean - overallMean }))
+        .sort((a, b) => b.deviation - a.deviation);
+
+      return {
+        total,
+        overallSum,
+        overallMean,
+        byDimension,
+        topContributors: groupsSorted.slice(0, 3),
+        topDetractors:   groupsSorted.slice(-3).reverse(),
+        rows,
+      };
+    }
+
+    /* ============================================================
+       Pipeline runner
+       ============================================================ */
+
+    function runPipeline() {
+      try {
+        if (!state.rawData.length) throw new Error('没有可用记录');
+        state.schema = detectSchema(state.rawData);
+        state.roles = resolveFieldRoles(state.schema);
+        state.reportPlan = buildReportPlan(state.schema, state.roles);
+        state.processedData = processData();
+        renderAll();
+        document.getElementById('fileInfo').textContent =
+          `已加载 ${state.rawData.length} 行 · ${state.schema?.fields.length || 0} 列`;
+      } catch (err) {
+        alert('处理失败：' + err.message);
+        console.error(err);
+      }
+    }
+
+    /* ============================================================
+       Stage 4 — render
+       ============================================================ */
+
+    function renderAll() {
+      // === ADD NEW RENDER CALLS BELOW (and search for this comment when adding sections) ===
+      tryRender(renderHeroMeta,     'reportMeta');
+      tryRender(renderConclusion,   'conclusionSection');
+      tryRender(renderStats,        'statsSection');
+      tryRender(renderHeroChart,    'heroChartSection');
+      tryRender(renderBreakdownCharts, 'chartsSection');
+      tryRender(renderTables,       'tablesSection');
+    }
+
+    function tryRender(fn, sectionId) {
+      try {
+        fn();
+        if (sectionId) document.getElementById(sectionId)?.classList.remove('hidden');
+      } catch (e) {
+        console.error(`Render failed: ${fn.name}`, e);
+      }
+    }
+
+    function renderHeroMeta() {
+      const d = state.processedData;
+      const s = state.schema;
+      document.getElementById('reportMeta').innerHTML = `
+        <span>📅 生成于 ${new Date().toLocaleString('zh-CN')}</span>
+        <span>📊 共 ${d.total.toLocaleString()} 行数据</span>
+        <span>🗂 ${s.dimensions.length} 个维度 / ${s.metrics.length} 个指标</span>
+        <span>报告类型：${escapeHtml(state.reportPlan.archetype)}</span>
+        ${state.reportPlan.warnings.map(w => `<span class="hl-bad">${escapeHtml(w)}</span>`).join('')}
+      `;
+    }
+
+    /* ─── Conclusion (rule-based) ──────────────────────────── */
+
+    function renderConclusion() {
+      const d = state.processedData;
+      const top = d.topContributors[0];
+      const bottom = d.topDetractors[0];
+
+      document.getElementById('conclusionText').innerHTML = `
+        共统计 <span class="hl-keyword">${d.total.toLocaleString()}</span> 条记录，
+        指标平均值为 <span class="hl-info">${d.overallMean.toFixed(2)}</span>。
+      `;
+
+      const bullets = [];
+      if (top && top.deviation > 0) {
+        const phrase = DICTIONARY[top.name] || '表现领先';
+        bullets.push(`<span class="hl-keyword">${escapeHtml(top.name)}</span> ${escapeHtml(phrase)}，
+          均值 <span class="hl-good">${top.mean.toFixed(2)}</span>
+          （高出整体 ${top.deviation.toFixed(2)}）。`);
+      }
+      if (bottom && bottom.deviation < 0) {
+        const phrase = DICTIONARY[bottom.name] || '需要关注';
+        bullets.push(`<span class="hl-keyword">${escapeHtml(bottom.name)}</span> ${escapeHtml(phrase)}，
+          均值 <span class="hl-bad">${bottom.mean.toFixed(2)}</span>
+          （低于整体 ${Math.abs(bottom.deviation).toFixed(2)}）。`);
+      }
+
+      document.getElementById('conclusionBullets').innerHTML =
+        bullets.map(b => `<div class="conclusion-bullet">${b}</div>`).join('');
+    }
+
+    /* ─── KPI cards ──────────────────────────────────────── */
+
+    function renderStats() {
+      const d = state.processedData;
+      const cards = [
+        { label: '总记录数', value: d.total.toLocaleString(), sub: `${state.schema.fields.length} 列` },
+        { label: state.roles.metric ? '指标合计' : '记录合计', value: d.overallSum.toFixed(2), sub: state.roles.metric || '记录数' },
+        { label: '指标均值', value: d.overallMean.toFixed(2), sub: '每条' },
+        { label: '维度数', value: Object.keys(d.byDimension).length, sub: state.roles.dimension || '总体' },
+      ];
+      document.getElementById('statsOverview').innerHTML = cards.map(c => `
+        <div class="stat-card">
+          <div class="stat-label">${c.label}</div>
+          <div class="stat-value">${c.value}</div>
+          <div class="stat-sub">${c.sub}</div>
+        </div>
+      `).join('');
+    }
+
+    /* ─── Hero chart (hand-written SVG bar chart) ─────────── */
+
+    function renderHeroChart() {
+      const groups = Object.entries(state.processedData.byDimension)
+        .sort((a,b) => b[1].sum - a[1].sum)
+        .slice(0, 12);
+
+      const width = 1200, height = 420;
+      const margin = { top: 30, right: 40, bottom: 80, left: 60 };
+      const chartW = width - margin.left - margin.right;
+      const chartH = height - margin.top - margin.bottom;
+
+      const maxVal = Math.max(...groups.map(g => g[1].sum)) || 1;
+      const barW = chartW / groups.length * 0.6;
+      const step = chartW / groups.length;
+
+      let svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="font-family:var(--font-sans)">`;
+
+      // Translate into plot area
+      svg += `<g transform="translate(${margin.left},${margin.top})">`;
+
+      // Gridlines
+      for (let i = 0; i <= 5; i++) {
+        const y = chartH - (i/5) * chartH;
+        svg += `<line x1="0" y1="${y}" x2="${chartW}" y2="${y}" stroke="#e8e8e8" stroke-dasharray="3,3"/>`;
+        svg += `<text x="-10" y="${y+4}" font-size="11" fill="#999" text-anchor="end">${(maxVal*i/5).toFixed(0)}</text>`;
+      }
+
+      // Bars + labels
+      groups.forEach(([name, g], i) => {
+        const x = i * step + (step - barW) / 2;
+        const h = (g.sum / maxVal) * chartH;
+        const y = chartH - h;
+        svg += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" fill="var(--primary)" fill-opacity="0.7" stroke="var(--primary)" stroke-width="1" rx="3"/>`;
+        svg += `<text x="${x + barW/2}" y="${y - 6}" font-size="11" fill="#333" text-anchor="middle" font-weight="600">${g.sum.toFixed(0)}</text>`;
+        // X-axis labels (rotated if long)
+        const labelLen = String(name).length;
+        if (labelLen > 6) {
+          svg += `<text x="${x + barW/2}" y="${chartH + 18}" font-size="11" fill="#666" text-anchor="end" transform="rotate(-30 ${x + barW/2} ${chartH + 18})">${escapeXml(name)}</text>`;
+        } else {
+          svg += `<text x="${x + barW/2}" y="${chartH + 18}" font-size="11" fill="#666" text-anchor="middle">${escapeXml(name)}</text>`;
+        }
+      });
+
+      svg += `</g></svg>`;
+      document.getElementById('heroChartContainer').innerHTML = svg;
+    }
+
+    /* ─── Breakdown charts (Chart.js for standard cases) ──── */
+
+    function renderBreakdownCharts() {
+      // Clean up old charts
+      state.charts.forEach(c => c.destroy());
+      state.charts = [];
+
+      const grid = document.getElementById('chartsGrid');
+      const groups = Object.entries(state.processedData.byDimension);
+
+      // Chart 1: distribution donut
+      grid.innerHTML = `
+        <div class="chart-card">
+          <div class="chart-title"><span>📊 分布占比</span></div>
+          <div class="chart-container"><canvas id="distChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title"><span>📈 均值排序</span></div>
+          <div class="chart-container"><canvas id="meanChart"></canvas></div>
+        </div>
+      `;
+
+      const palette = ['#4caf50', '#ff9800', '#f44336', '#1976d2', '#9c27b0', '#00bcd4', '#ff5722', '#795548'];
+
+      // Distribution donut
+      state.charts.push(new Chart(document.getElementById('distChart'), {
+        type: 'doughnut',
+        data: {
+          labels: groups.map(([n]) => n),
+          datasets: [{ data: groups.map(([_,g]) => g.count), backgroundColor: palette }],
+        },
+        options: { plugins: { legend: { position: 'right' } }, maintainAspectRatio: false },
+      }));
+
+      // Mean by group
+      const meanSorted = groups.slice().sort((a,b) => b[1].mean - a[1].mean);
+      state.charts.push(new Chart(document.getElementById('meanChart'), {
+        type: 'bar',
+        data: {
+          labels: meanSorted.map(([n]) => n),
+          datasets: [{ data: meanSorted.map(([_,g]) => g.mean), backgroundColor: 'var(--info)' }],
+        },
+        options: {
+          plugins: { legend: { display: false } },
+          indexAxis: 'y',
+          maintainAspectRatio: false,
+        },
+      }));
+    }
+
+    /* ─── Detail tables ────────────────────────────────────── */
+
+    function renderTables() {
+      const groups = Object.entries(state.processedData.byDimension)
+        .sort((a,b) => b[1].sum - a[1].sum);
+      let html = `<table class="data-table"><thead><tr>
+        <th>${escapeHtml(state.roles.dimension || '分组')}</th><th>条数</th><th>合计</th><th>均值</th><th>占比</th>
+      </tr></thead><tbody>`;
+      groups.forEach(([name, g]) => {
+        html += `<tr>
+          <td>${escapeHtml(name)}</td>
+          <td>${g.count}</td>
+          <td>${g.sum.toFixed(2)}</td>
+          <td>${g.mean.toFixed(2)}</td>
+          <td>${(g.share * 100).toFixed(1)}%</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      document.getElementById('tablesContainer').innerHTML = html;
+    }
+
+    /* ============================================================
+       Helpers — escape, formatChange, etc
+       ============================================================ */
+
+    function escapeHtml(s) {
+      const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML;
+    }
+    function escapeXml(s) {
+      return String(s ?? '').replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
+    }
+
+    function classifyChange(delta, t = THRESHOLDS.trend) {
+      const abs = Math.abs(delta);
+      const dir = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+      if (abs < t.flat) return 'flat';
+      if (abs < t.moderate)    return 'moderate_' + dir;
+      if (abs < t.significant) return 'significant_' + dir;
+      return 'dramatic_' + dir;
+    }
+
+    function formatChange(delta, { higherIsBetter = true, asPercent = true } = {}) {
+      if (Math.abs(delta) < 0.01) return { text: '持平', class: 'hl-neutral' };
+      const arrow = delta > 0 ? '↑' : '↓';
+      const isGoodNews = higherIsBetter ? delta > 0 : delta < 0;
+      const cls = isGoodNews ? 'hl-good' : 'hl-bad';
+      const sign = delta > 0 ? '+' : '';
+      const suffix = asPercent ? '%' : '';
+      return { text: `${arrow} ${sign}${delta.toFixed(2)}${suffix}`, class: cls };
+    }
+
+    /* ============================================================
+       Export — HTML / PNG / SVG / Excel
+       ============================================================ */
+
+    function showProgress(text) {
+      document.getElementById('exportProgressText').textContent = text;
+      document.getElementById('exportProgress').classList.add('active');
+    }
+    function hideProgress() {
+      document.getElementById('exportProgress').classList.remove('active');
+    }
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    async function exportHtmlReport() {
+      if (!state.processedData) { alert('请先加载数据'); return; }
+      showProgress('提取样式…');
+      await sleep(100);
+
+      // 1. Pull all styles (current page + export overrides)
+      let css = '';
+      document.querySelectorAll('style').forEach(s => css += s.textContent + '\n');
+      css += `
+        .upload-area, input[type="file"], .file-input,
+        button, .btn, .chart-actions { display: none !important; }
+        input[type="text"] { border: none !important; background: transparent !important; }
+        .hidden { display: none !important; }
+      `;
+
+      // 2. Clone & clean the sections
+      showProgress('整理报告内容…');
+      await sleep(100);
+      const sectionIds = ['conclusionSection', 'statsSection', 'heroChartSection', 'chartsSection', 'tablesSection'];
+      let content = '';
+      for (const id of sectionIds) {
+        const el = document.getElementById(id);
+        if (el && !el.classList.contains('hidden')) {
+          content += cloneAndClean(el).outerHTML + '\n';
+        }
+      }
+
+      // 3. Wrap in full HTML doc
+      showProgress('打包文件…');
+      await sleep(100);
+      const title = document.title;
+      const stamp = new Date().toLocaleString('zh-CN');
+      const fullHtml = `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>${title}</title>
+<style>${css}</style></head>
+<body><div class="app">
+<header class="hero"><h1>${title}</h1><p>${stamp}</p></header>
+${content}
+</div></body></html>`;
+
+      // 4. Download
+      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${title}_${new Date().toISOString().slice(0,10)}.html`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 100);
+      hideProgress();
+    }
+
+    function cloneAndClean(element) {
+      const clone = element.cloneNode(true);
+      clone.querySelectorAll('button, .btn, .chart-actions, input[type="file"], .upload-area').forEach(e => e.remove());
+      clone.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => {
+        const span = document.createElement('span');
+        span.textContent = input.value || input.placeholder || '';
+        span.className = 'frozen-input';
+        input.parentNode.replaceChild(span, input);
+      });
+      clone.querySelectorAll('select').forEach(s => {
+        const sel = s.options[s.selectedIndex];
+        const span = document.createElement('span');
+        span.textContent = sel ? sel.textContent : '';
+        span.className = 'frozen-input';
+        s.parentNode.replaceChild(span, s);
+      });
+      clone.querySelectorAll('*').forEach(el => {
+        Array.from(el.attributes).forEach(attr => {
+          if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+        });
+      });
+      return clone;
+    }
+
+    function downloadChartSvg(containerId, filename) {
+      const svg = document.querySelector(`#${containerId} svg`);
+      if (!svg) return alert('未找到图表');
+      const str = new XMLSerializer().serializeToString(svg);
+      const blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 100);
+    }
+
+    function downloadChartPng(containerId, filename) {
+      const svg = document.querySelector(`#${containerId} svg`);
+      if (!svg) return alert('未找到图表');
+      const str = new XMLSerializer().serializeToString(svg);
+      const blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const scale = 2;
+        const c = document.createElement('canvas');
+        c.width = svg.clientWidth * scale; c.height = svg.clientHeight * scale;
+        const ctx = c.getContext('2d');
+        ctx.scale(scale, scale);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, svg.clientWidth, svg.clientHeight);
+        ctx.drawImage(img, 0, 0);
+        c.toBlob(b => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(b);
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+          setTimeout(() => URL.revokeObjectURL(a.href), 100);
+        });
+      };
+      img.src = url;
+    }
+
+    let XLSX_LOADED = null;
+    function loadXLSX() {
+      if (XLSX_LOADED) return XLSX_LOADED;
+      return XLSX_LOADED = new Promise((resolve, reject) => {
+        if (window.XLSX) return resolve(window.XLSX);
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = () => resolve(window.XLSX);
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    async function exportExcel() {
+      if (!state.processedData) { alert('请先加载数据'); return; }
+      showProgress('加载 Excel 库…');
+      const XLSX = await loadXLSX();
+      const d = state.processedData;
+
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: overview
+      const overview = [
+        ['报告生成', new Date().toLocaleString('zh-CN')],
+        ['总记录数', d.total],
+        ['指标合计', d.overallSum],
+        ['指标均值', d.overallMean],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(overview), '概览');
+
+      // Sheet 2: by dimension
+      const byDim = Object.entries(d.byDimension).map(([name, g]) => ({
+        [state.roles.dimension || '分组']: name, 条数: g.count, 合计: g.sum.toFixed(2),
+        均值: g.mean.toFixed(2), 占比: (g.share*100).toFixed(2) + '%',
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(byDim), '分维度');
+
+      // Sheet 3: raw data
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.rawData), '明细');
+
+      XLSX.writeFile(wb, `report_${new Date().toISOString().slice(0,10)}.xlsx`);
+      hideProgress();
+    }
+
+    /* ============================================================
+       Reset
+       ============================================================ */
+
+    function clearAll() {
+      state.rawData = [];
+      state.processedData = null;
+      state.schema = null;
+      state.roles = null;
+      state.reportPlan = null;
+      state.charts.forEach(c => c.destroy());
+      state.charts = [];
+      ['conclusionSection','statsSection','heroChartSection','chartsSection','tablesSection']
+        .forEach(id => document.getElementById(id).classList.add('hidden'));
+      document.getElementById('fileInput').value = '';
+      document.getElementById('fileInfo').textContent = '';
+    }
+
+    /* ============================================================
+       (Optional) inline data — uncomment + paste your data
+       to skip the upload step entirely.
+       ============================================================ */
+    // const EMBEDDED_DATA = [
+    //   { category: 'A', value: 12, date: '2024-01' },
+    //   { category: 'B', value: 8,  date: '2024-01' },
+    //   ...
+    // ];
+  </script>
+</body>
+</html>

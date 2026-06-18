@@ -1,0 +1,4 @@
+interface:
+  display_name: "Data Visualization Report"
+  short_description: "Turn varied data into an evidence-based report"
+  default_prompt: "Use $data-viz-report to profile my data and build a clear, validated HTML report."

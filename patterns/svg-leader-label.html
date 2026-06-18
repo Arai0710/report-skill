@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pattern — Leader-label collision avoidance (line chart)</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; padding: 40px; background: #f5f5f5; }
+    .demo { background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 1400px; margin: 0 auto; }
+    h1 { margin: 0 0 20px; color: #1d6f64; }
+    .controls { margin: 16px 0; display: flex; gap: 12px; }
+    button { padding: 8px 16px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; font-family: inherit; font-size: 13px; }
+    button:hover { background: #f0f0f0; }
+    .note { background: #f0f7f5; padding: 16px; border-radius: 8px; margin-top: 20px; font-size: 13px; color: #555; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="demo">
+    <h1>Pattern: Two overlapping lines with non-overlapping labels</h1>
+    <p>Two series with paired data points at every x-tick. The label placement algorithm decides above/below for each label and pushes them apart if they'd collide.</p>
+    <div class="controls">
+      <button onclick="regenerate('similar')">Regenerate (similar values — hard case)</button>
+      <button onclick="regenerate('diverge')">Regenerate (diverging values — easy case)</button>
+      <button onclick="regenerate('boundary')">Regenerate (near-boundary values — flip case)</button>
+    </div>
+    <div id="chart"></div>
+
+    <div class="note">
+      <strong>Try the three scenarios:</strong>
+      <ul>
+        <li><strong>Similar values</strong> — A and B are close at most points, forcing the algorithm to spread labels vertically</li>
+        <li><strong>Diverging values</strong> — easy case, labels naturally fit</li>
+        <li><strong>Near-boundary</strong> — points near top/bottom of plot force labels to flip to the opposite side</li>
+      </ul>
+      Algorithm:
+      <ol>
+        <li>Higher point gets label above, lower point gets label below</li>
+        <li>If point near top edge → flip its label below (and push the other down if needed)</li>
+        <li>If point near bottom edge → flip its label above</li>
+        <li>Final pass: if labels still overlap, force-separate around midpoint</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    const COLORS = { A: '#E53935', B: '#1976D2' };
+    let DATA_A = [], DATA_B = [];
+
+    function regenerate(scenario) {
+      const n = 10;
+      DATA_A = []; DATA_B = [];
+      for (let i = 0; i < n; i++) {
+        let a, b;
+        if (scenario === 'similar') {
+          a = 60 + Math.random() * 30;
+          b = a + (Math.random() - 0.5) * 8;
+        } else if (scenario === 'diverge') {
+          a = 30 + Math.random() * 20;
+          b = 70 + Math.random() * 20;
+        } else { // boundary
+          a = i % 2 === 0 ? 5 + Math.random() * 8 : 88 + Math.random() * 8;
+          b = i % 2 === 0 ? 8 + Math.random() * 6 : 90 + Math.random() * 6;
+        }
+        DATA_A.push(a); DATA_B.push(b);
+      }
+      render();
+    }
+
+    function placePairedLabels(pointA, pointB, chartH, labelH = 18, gap = 6, edgeMargin = 8) {
+      const tooClose = Math.abs(pointA.y - pointB.y) < (labelH + gap * 2);
+      let labelAY, labelBY, dirA, dirB;
+
+      if (pointA.y <= pointB.y) {
+        labelAY = pointA.y - gap - labelH/2;
+        labelBY = pointB.y + gap + labelH/2;
+        dirA = 'above'; dirB = 'below';
+      } else {
+        labelBY = pointB.y - gap - labelH/2;
+        labelAY = pointA.y + gap + labelH/2;
+        dirB = 'above'; dirA = 'below';
+      }
+
+      // Boundary recovery
+      if (labelAY - labelH/2 < edgeMargin) {
+        labelAY = pointA.y + gap + labelH/2;
+        dirA = 'below';
+        if (dirB === 'below' && Math.abs(labelAY - labelBY) < labelH + gap) {
+          labelBY = labelAY + labelH + gap;
+        }
+      }
+      if (labelBY - labelH/2 < edgeMargin) {
+        labelBY = pointB.y + gap + labelH/2;
+        dirB = 'below';
+        if (dirA === 'below' && Math.abs(labelAY - labelBY) < labelH + gap) {
+          labelAY = labelBY + labelH + gap;
+        }
+      }
+      if (labelAY + labelH/2 > chartH - edgeMargin) {
+        labelAY = pointA.y - gap - labelH/2;
+        dirA = 'above';
+      }
+      if (labelBY + labelH/2 > chartH - edgeMargin) {
+        labelBY = pointB.y - gap - labelH/2;
+        dirB = 'above';
+      }
+
+      // Final force-separate
+      if (Math.abs(labelAY - labelBY) < labelH + gap) {
+        const mid = (labelAY + labelBY) / 2;
+        if (labelAY < labelBY) {
+          labelAY = mid - (labelH/2 + gap/2);
+          labelBY = mid + (labelH/2 + gap/2);
+        } else {
+          labelBY = mid - (labelH/2 + gap/2);
+          labelAY = mid + (labelH/2 + gap/2);
+        }
+      }
+
+      return { labelAY, labelBY, dirA, dirB };
+    }
+
+    function render() {
+      const width = 1300, height = 480;
+      const margin = { top: 40, right: 60, bottom: 50, left: 60 };
+      const chartW = width - margin.left - margin.right;
+      const chartH = height - margin.top - margin.bottom;
+      const n = DATA_A.length;
+      const xStep = chartW / (n - 1);
+      const getX = i => i * xStep;
+      const getY = v => chartH - (v / 100) * chartH;
+
+      let svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="font-family:inherit;background:#fff;width:100%;height:auto">`;
+      svg += `<g transform="translate(${margin.left},${margin.top})">`;
+
+      // Gridlines + Y-axis
+      for (let i = 0; i <= 5; i++) {
+        const y = chartH - (i/5) * chartH;
+        svg += `<line x1="0" y1="${y}" x2="${chartW}" y2="${y}" stroke="#eee" stroke-dasharray="3,3"/>`;
+        svg += `<text x="-8" y="${y+4}" font-size="11" fill="#999" text-anchor="end">${i*20}%</text>`;
+      }
+      svg += `<line x1="0" y1="${chartH}" x2="${chartW}" y2="${chartH}" stroke="#ccc"/>`;
+
+      // X-axis labels
+      for (let i = 0; i < n; i++) {
+        svg += `<text x="${getX(i)}" y="${chartH + 20}" font-size="11" fill="#666" text-anchor="middle">T${i+1}</text>`;
+      }
+
+      // Line paths
+      const pathA = DATA_A.map((v,i) => (i ? 'L' : 'M') + getX(i) + ',' + getY(v)).join(' ');
+      const pathB = DATA_B.map((v,i) => (i ? 'L' : 'M') + getX(i) + ',' + getY(v)).join(' ');
+      svg += `<path d="${pathA}" fill="none" stroke="${COLORS.A}" stroke-width="2.5" stroke-linecap="round"/>`;
+      svg += `<path d="${pathB}" fill="none" stroke="${COLORS.B}" stroke-width="2.5" stroke-dasharray="8,4" stroke-linecap="round"/>`;
+
+      // Points
+      DATA_A.forEach((v,i) => svg += `<circle cx="${getX(i)}" cy="${getY(v)}" r="5" fill="${COLORS.A}" stroke="#fff" stroke-width="2"/>`);
+      DATA_B.forEach((v,i) => svg += `<circle cx="${getX(i)}" cy="${getY(v)}" r="5" fill="${COLORS.B}" stroke="#fff" stroke-width="2"/>`);
+
+      // Smart label placement
+      const labelW = 44, labelH = 18;
+      for (let i = 0; i < n; i++) {
+        const pA = { x: getX(i), y: getY(DATA_A[i]) };
+        const pB = { x: getX(i), y: getY(DATA_B[i]) };
+        const { labelAY, labelBY } = placePairedLabels(pA, pB, chartH, labelH, 6, 8);
+
+        // Label A
+        svg += `<rect x="${pA.x - labelW/2}" y="${labelAY - labelH/2}" width="${labelW}" height="${labelH}" fill="#fff" fill-opacity="0.95" stroke="${COLORS.A}" stroke-opacity="0.4" stroke-width="0.5" rx="3"/>`;
+        svg += `<text x="${pA.x}" y="${labelAY + 4}" font-size="11" fill="${COLORS.A}" text-anchor="middle" font-weight="600">${DATA_A[i].toFixed(1)}%</text>`;
+        // Label B
+        svg += `<rect x="${pB.x - labelW/2}" y="${labelBY - labelH/2}" width="${labelW}" height="${labelH}" fill="#fff" fill-opacity="0.95" stroke="${COLORS.B}" stroke-opacity="0.4" stroke-width="0.5" rx="3"/>`;
+        svg += `<text x="${pB.x}" y="${labelBY + 4}" font-size="11" fill="${COLORS.B}" text-anchor="middle" font-weight="600">${DATA_B[i].toFixed(1)}%</text>`;
+      }
+
+      // Legend
+      svg += `<g transform="translate(${chartW - 180}, 0)">`;
+      svg += `<line x1="0" y1="8" x2="20" y2="8" stroke="${COLORS.A}" stroke-width="2.5"/>`;
+      svg += `<text x="26" y="12" font-size="12" fill="#333">Series A (baseline)</text>`;
+      svg += `<line x1="0" y1="28" x2="20" y2="28" stroke="${COLORS.B}" stroke-width="2.5" stroke-dasharray="6,3"/>`;
+      svg += `<text x="26" y="32" font-size="12" fill="#333">Series B (current)</text>`;
+      svg += `</g>`;
+
+      svg += `</g></svg>`;
+      document.getElementById('chart').innerHTML = svg;
+    }
+
+    regenerate('similar');
+  </script>
+</body>
+</html>
